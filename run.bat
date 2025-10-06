@@ -1,0 +1,2 @@
+python ge.py
+pause
