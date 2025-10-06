@@ -6,23 +6,27 @@ import os
 API_KEY = ""  # Замініть на ваш ключ
 # ------------------------------------
 
-def evaluate_answer(question, answer, model):
+def evaluate_student_answers(student_name, answers, model):
     """
-    Sends a student's answer to the Gemini API for evaluation.
+    Sends all of a student's answers to the Gemini API for evaluation in a single request.
     """
-    prompt = f"""
-    Оціни відповідь студента на запитання за 100-бальною шкалою за двома критеріями:
-    1.  **Правильність відповіді:** Наскільки точною та повною є відповідь?
-    2.  **Підозра на списування:** Чи не схожа відповідь на копію з Інтернету або надто формальний текст?
+    prompt_parts = [
+        "Оціни відповіді студента на кожне запитання за 100-бальною шкалою за двома критеріями:\n"
+        "1. **Правильність відповіді:** Наскільки точною та повною є відповідь?\n"
+        "2. **Підозра на списування:** Чи не схожа відповідь на копію з Інтернету або надто формальний текст?\n\n"
+        "Надай оцінку для кожної відповіді у форматі:\n"
+        "**Запитання:** [Запитання]\n"
+        "**Відповідь:** [Відповідь студента]\n"
+        "**Правильність:** [оцінка від 0 до 100]\n"
+        "**Підозра на списування:** [оцінка від 0 до 100, де 100 — дуже висока підозра]\n"
+        "**Коментар:** [коротке пояснення]\n"
+        "---"
+    ]
 
-    **Запитання:** {question}
-    **Відповідь студента:** {answer}
+    for question, answer in answers.items():
+        prompt_parts.append(f"**Запитання:** {question}\n**Відповідь:** {answer}\n")
 
-    Надай оцінку у форматі:
-    **Правильність:** [оцінка від 0 до 100]
-    **Підозра на списування:** [оцінка від 0 до 100, де 100 — дуже висока підозра]
-    **Коментар:** [коротке пояснення]
-    """
+    prompt = "\n".join(prompt_parts)
     
     try:
         response = model.generate_content(prompt)
@@ -42,7 +46,7 @@ def main():
 
         # 1. Конфігурація API
         genai.configure(api_key=API_KEY)
-        model = genai.GenerativeModel(model_name='gemini-pro')
+        model = genai.GenerativeModel(model_name='gemini-2.5-pro')
 
         # 2. Читання файлу з відповідями
         try:
@@ -60,22 +64,24 @@ def main():
             student_name = row["Вкажіть прізвище та ім'я:"]
             print(f"\nОбробка відповідей для студента: {student_name}")
 
+            student_answers = {}
             for question in question_columns:
                 answer = row[question]
+                if pd.notna(answer) and str(answer).strip():
+                    student_answers[question] = str(answer)
 
-                # Пропускаємо порожні відповіді
-                if pd.isna(answer) or not str(answer).strip():
-                    continue
+            if not student_answers:
+                continue
 
-                print(f"  - Оцінка відповіді на запитання: '{question}'")
-                evaluation = evaluate_answer(question, answer, model)
+            print(f"  - Надсилання {len(student_answers)} відповідей на оцінку...")
+            evaluation = evaluate_student_answers(student_name, student_answers, model)
 
-                results.append({
-                    "Студент": student_name,
-                    "Запитання": question,
-                    "Відповідь": answer,
-                    "Оцінка": evaluation
-                })
+            results.append({
+                "Студент": student_name,
+                "Запитання": "Всі запитання",
+                "Відповідь": "\n\n".join([f"**{q}**:\n{a}" for q, a in student_answers.items()]),
+                "Оцінка": evaluation
+            })
 
         # 5. Збереження результатів у новий файл
         if results:
