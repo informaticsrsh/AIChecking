@@ -1,6 +1,7 @@
 import pandas as pd
 import google.generativeai as genai
 import os
+import re
 
 # --- Вставте ваші дані сюди ---
 API_KEY = ""  # Замініть на ваш ключ
@@ -27,12 +28,24 @@ def evaluate_student_answers(student_name, answers, model):
         prompt_parts.append(f"**Запитання:** {question}\n**Відповідь:** {answer}\n")
 
     prompt = "\n".join(prompt_parts)
-    
+
     try:
         response = model.generate_content(prompt)
         return response.text
     except Exception as e:
         return f"Помилка під час звернення до API: {e}"
+
+def parse_evaluation(evaluation_text):
+    """
+    Parses the evaluation text to extract scores for correctness and suspicion.
+    """
+    correctness_scores = [int(s) for s in re.findall(r"Правильність:.*?(\d+)", evaluation_text)]
+    suspicion_scores = [int(s) for s in re.findall(r"Підозра на списування:.*?(\d+)", evaluation_text)]
+
+    avg_correctness = sum(correctness_scores) / len(correctness_scores) if correctness_scores else 0
+    avg_suspicion = sum(suspicion_scores) / len(suspicion_scores) if suspicion_scores else 0
+
+    return avg_correctness, avg_suspicion
 
 def main():
     """
@@ -46,7 +59,7 @@ def main():
 
         # 1. Конфігурація API
         genai.configure(api_key=API_KEY)
-        model = genai.GenerativeModel(model_name='gemini-2.5-pro')
+        model = genai.GenerativeModel(model_name='gemini-1.5-flash')
 
         # 2. Читання файлу з відповідями
         try:
@@ -76,11 +89,16 @@ def main():
             print(f"  - Надсилання {len(student_answers)} відповідей на оцінку...")
             evaluation = evaluate_student_answers(student_name, student_answers, model)
 
+            # Parse the evaluation to get average scores
+            avg_correctness, avg_suspicion = parse_evaluation(evaluation)
+
             results.append({
                 "Студент": student_name,
                 "Запитання": "Всі запитання",
                 "Відповідь": "\n\n".join([f"**{q}**:\n{a}" for q, a in student_answers.items()]),
-                "Оцінка": evaluation
+                "Оцінка": evaluation,
+                "Середня правильність": avg_correctness,
+                "Середня підозра": avg_suspicion
             })
 
         # 5. Збереження результатів у новий файл
