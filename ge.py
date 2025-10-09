@@ -71,7 +71,7 @@ def main():
 
         # 1. Конфігурація API
         genai.configure(api_key=API_KEY)
-        model = genai.GenerativeModel(model_name='gemini-2.5-flash')
+        model = genai.GenerativeModel(model_name='gemini-1.5-flash')
 
         # 2. Читання файлу з відповідями
         try:
@@ -82,12 +82,12 @@ def main():
 
         # 3. Підготовка до збереження результатів
         results = []
-        question_columns = df.columns[4:]
+        question_columns = df.columns[3:]
         num_questions = len(question_columns)
 
         # 4. Оцінка відповідей
         for index, row in df.iterrows():
-            student_name = row["Вкажіть прізвище та ім'я:"]
+            student_name = row["Прізвище, ім'я та по батькові"]
             print(f"\nОбробка відповідей для студента: {student_name}")
 
             student_answers = {}
