@@ -2,7 +2,6 @@ import pandas as pd
 import google.generativeai as genai
 import os
 import re
-import argparse
 from dotenv import load_dotenv
 
 # --- Вставте ваші дані сюди ---
@@ -58,20 +57,10 @@ def parse_evaluation(evaluation_text):
 
     return evaluations
 
-def parse_arguments():
-    """Parses command-line arguments."""
-    parser = argparse.ArgumentParser(description="Evaluate student answers using Gemini API.")
-    parser.add_argument("name_column", type=int, help="Column number where student names are located (starting from 1).")
-    parser.add_argument("start_question", type=int, help="Column number where the questions begin (starting from 1).")
-    parser.add_argument("num_questions", type=int, help="Number of questions to check.")
-    return parser.parse_args()
-
 def main():
     """
     Main function to read student answers, evaluate them, and save the results.
     """
-    args = parse_arguments()
-
     try:
         print("▶️  Запуск скрипту...")
 
@@ -91,10 +80,10 @@ def main():
 
         # 3. Підготовка до збереження результатів
         results = []
-        name_col_index = args.name_column - 1
-        start_col_index = args.start_question - 1
-        end_col_index = start_col_index + args.num_questions
-        question_columns = df.columns[start_col_index:end_col_index]
+        name_col_index = 2  # Column 3 (Прізвище, ім'я та по батькові)
+        start_col_index = 3  # Column 4
+        num_questions_to_check = 6
+        question_columns = df.columns[start_col_index : start_col_index + num_questions_to_check]
         num_questions = len(question_columns)
 
         # 4. Оцінка відповідей
