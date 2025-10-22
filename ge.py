@@ -2,6 +2,7 @@ import pandas as pd
 import google.generativeai as genai
 import os
 import re
+import argparse
 from dotenv import load_dotenv
 
 # --- Вставте ваші дані сюди ---
@@ -42,27 +43,35 @@ def evaluate_student_answers(student_name, answers, model):
 
 def parse_evaluation(evaluation_text):
     """
-    Parses the evaluation text to extract total scores and comments for each question.
+    Parses the evaluation text to extract scores and comments for each question.
     """
-    # Regex to find individual evaluation blocks
+    evaluations = []
     evaluation_blocks = re.findall(r"\*\*Правильність:\*\* (\d+)\s*\n\s*\*\*Підозра на списування:\*\* (\d+)\s*\n\s*\*\*Коментар:\*\* (.*?)(?=\n---|\Z)", evaluation_text, re.DOTALL)
 
-    total_correctness = 0
-    total_suspicion = 0
-    comments = []
-
-    for i, block in enumerate(evaluation_blocks):
+    for block in evaluation_blocks:
         correctness, suspicion, comment = block
-        total_correctness += int(correctness)
-        total_suspicion += int(suspicion)
-        comments.append(f"Коментар до відповіді {i+1}: {comment.strip()}")
+        evaluations.append({
+            "correctness": int(correctness),
+            "suspicion": int(suspicion),
+            "comment": comment.strip()
+        })
 
-    return total_correctness, total_suspicion, "\n".join(comments)
+    return evaluations
+
+def parse_arguments():
+    """Parses command-line arguments."""
+    parser = argparse.ArgumentParser(description="Evaluate student answers using Gemini API.")
+    parser.add_argument("name_column", type=int, help="Column number where student names are located (starting from 1).")
+    parser.add_argument("start_question", type=int, help="Column number where the questions begin (starting from 1).")
+    parser.add_argument("num_questions", type=int, help="Number of questions to check.")
+    return parser.parse_args()
 
 def main():
     """
     Main function to read student answers, evaluate them, and save the results.
     """
+    args = parse_arguments()
+
     try:
         print("▶️  Запуск скрипту...")
 
@@ -71,7 +80,7 @@ def main():
 
         # 1. Конфігурація API
         genai.configure(api_key=API_KEY)
-        model = genai.GenerativeModel(model_name='gemini-2.5-flash')
+        model = genai.GenerativeModel(model_name='gemini-1.5-flash')
 
         # 2. Читання файлу з відповідями
         try:
@@ -82,12 +91,15 @@ def main():
 
         # 3. Підготовка до збереження результатів
         results = []
-        question_columns = df.columns[4:]
+        name_col_index = args.name_column - 1
+        start_col_index = args.start_question - 1
+        end_col_index = start_col_index + args.num_questions
+        question_columns = df.columns[start_col_index:end_col_index]
         num_questions = len(question_columns)
 
         # 4. Оцінка відповідей
         for index, row in df.iterrows():
-            student_name = row["Вкажіть прізвище та ім'я:"]
+            student_name = row.iloc[name_col_index]
             print(f"\nОбробка відповідей для студента: {student_name}")
 
             student_answers = {}
@@ -96,26 +108,36 @@ def main():
                 if pd.notna(answer) and str(answer).strip():
                     student_answers[question] = str(answer)
 
-            total_correctness = 0
-            total_suspicion = 0
-            comments = "Студент не надав жодної відповіді."
-
+            evaluations = []
             if student_answers:
                 print(f"  - Надсилання {len(student_answers)} відповідей на оцінку...")
                 evaluation_raw = evaluate_student_answers(student_name, student_answers, model)
-                total_correctness, total_suspicion, comments = parse_evaluation(evaluation_raw)
+                evaluations = parse_evaluation(evaluation_raw)
 
-            # Calculate averages based on the total number of questions
+            total_correctness = sum(e['correctness'] for e in evaluations)
+            total_suspicion = sum(e['suspicion'] for e in evaluations)
             avg_correctness = total_correctness / num_questions if num_questions > 0 else 0
             avg_suspicion = total_suspicion / num_questions if num_questions > 0 else 0
 
-            results.append({
+            result_row = {
                 "Номер студента": index + 1,
                 "Студент": student_name,
-                "Коментарі з оцінки": comments,
                 "Середня правильність": avg_correctness,
                 "Середня підозра": avg_suspicion
-            })
+            }
+
+            for i, q_col in enumerate(question_columns):
+                if i < len(evaluations):
+                    result_row[f"{q_col}_Правильність"] = evaluations[i]['correctness']
+                    result_row[f"{q_col}_Підозра"] = evaluations[i]['suspicion']
+                    result_row[f"{q_col}_Коментар"] = evaluations[i]['comment']
+                else:
+                    # Fill with 0 if no answer was provided for a question
+                    result_row[f"{q_col}_Правильність"] = 0
+                    result_row[f"{q_col}_Підозра"] = 0
+                    result_row[f"{q_col}_Коментар"] = "No answer provided"
+
+            results.append(result_row)
 
         # 5. Збереження результатів у новий файл
         if results:
